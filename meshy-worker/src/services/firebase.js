@@ -1,9 +1,26 @@
 import admin from 'firebase-admin';
 import { config } from '../config/index.js';
 
+function parseServiceAccount(raw) {
+  try {
+    return JSON.parse(raw);
+  } catch (_) {}
+
+  const escaped = raw
+    .replace(/\r\n/g, '\\n')
+    .replace(/\n/g, '\\n')
+    .replace(/\t/g, '\\t');
+  try {
+    return JSON.parse(escaped);
+  } catch (_) {}
+
+  const decoded = Buffer.from(raw, 'base64').toString('utf8');
+  return JSON.parse(decoded);
+}
+
 function buildCredential() {
   if (config.FIREBASE_SERVICE_ACCOUNT_JSON) {
-    const parsed = JSON.parse(config.FIREBASE_SERVICE_ACCOUNT_JSON);
+    const parsed = parseServiceAccount(config.FIREBASE_SERVICE_ACCOUNT_JSON);
     return admin.credential.cert(parsed);
   }
   return admin.credential.applicationDefault();
