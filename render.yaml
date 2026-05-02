@@ -1,0 +1,39 @@
+services:
+  - type: web
+    name: marketplace-backend
+    runtime: node
+    plan: free
+    region: oregon
+    rootDir: meshy-worker
+    buildCommand: npm ci --omit=dev
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: MESHY_BASE_URL
+        value: https://api.meshy.ai/openapi/v1
+      - key: FIREBASE_PROJECT_ID
+        value: marketplace-e7d4e
+      - key: FIREBASE_STORAGE_BUCKET
+        value: marketplace-e7d4e.firebasestorage.app
+      - key: MAX_CREDITS_PER_MONTH
+        value: "200"
+      # Secretos: pegar en el dashboard de Render, no en este archivo
+      - key: MESHY_API_KEY
+        sync: false
+      - key: MESHY_WEBHOOK_SECRET
+        sync: false
+      - key: FIREBASE_SERVICE_ACCOUNT_JSON
+        sync: false
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: PUBLIC_BASE_URL
+        sync: false
