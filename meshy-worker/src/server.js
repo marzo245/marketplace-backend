@@ -5,6 +5,10 @@ import { logger } from './utils/logger.js';
 import productsRouter from './routes/products.js';
 import webhooksRouter from './routes/webhooks.js';
 
+if (process.env.RUN_WORKER_INLINE !== 'false') {
+  await import('./workers/processor.js');
+}
+
 const app = express();
 
 app.use(pinoHttp({ logger }));

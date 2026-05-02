@@ -1,9 +1,17 @@
 import admin from 'firebase-admin';
 import { config } from '../config/index.js';
 
+function buildCredential() {
+  if (config.FIREBASE_SERVICE_ACCOUNT_JSON) {
+    const parsed = JSON.parse(config.FIREBASE_SERVICE_ACCOUNT_JSON);
+    return admin.credential.cert(parsed);
+  }
+  return admin.credential.applicationDefault();
+}
+
 if (!admin.apps.length) {
   admin.initializeApp({
-    credential: admin.credential.applicationDefault(),
+    credential: buildCredential(),
     projectId: config.FIREBASE_PROJECT_ID,
     storageBucket: config.FIREBASE_STORAGE_BUCKET,
   });
