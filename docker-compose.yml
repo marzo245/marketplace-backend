@@ -1,0 +1,31 @@
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: marketplace_redis
+    ports:
+      - "6379:6379"
+
+  api:
+    build:
+      context: ./meshy-worker
+      dockerfile: Dockerfile
+    container_name: marketplace_api
+    env_file:
+      - ./meshy-worker/.env
+    command: npm run start
+    ports:
+      - "3000:3000"
+    depends_on:
+      - redis
+
+  worker:
+    build:
+      context: ./meshy-worker
+      dockerfile: Dockerfile
+    container_name: marketplace_worker
+    env_file:
+      - ./meshy-worker/.env
+    command: npm run worker
+    depends_on:
+      - redis
+      - api

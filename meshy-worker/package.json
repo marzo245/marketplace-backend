@@ -1,0 +1,31 @@
+{
+  "name": "meshy-3d-worker",
+  "version": "1.0.0",
+  "description": "Backend worker that processes product photos into 3D models via Meshy AI",
+  "main": "src/server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "worker": "node src/workers/processor.js"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "axios": "^1.7.2",
+    "bullmq": "^5.12.0",
+    "cloudinary": "^2.10.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "firebase-admin": "^12.3.0",
+    "ioredis": "^5.4.1",
+    "multer": "^1.4.5-lts.1",
+    "pino": "^9.3.2",
+    "pino-http": "^10.2.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "pino-pretty": "^11.2.2"
+  }
+}

@@ -1,0 +1,25 @@
+# Secrets
+service-account.json
+**/.env
+**/.env.local
+
+# Frontend (vive en su propio repo: marketplace_app)
+marketplace_app/
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Editores / IDE
+.idea/
+.vscode/
+.claude/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
