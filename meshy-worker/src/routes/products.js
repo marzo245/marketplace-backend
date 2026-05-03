@@ -167,10 +167,6 @@ router.get('/admin/usage', verifyFirebaseToken, async (req, res, next) => {
 
 router.post('/admin/products/:id/reconcile-model', verifyFirebaseToken, async (req, res, next) => {
   try {
-    if (req.user.admin !== true) {
-      return res.status(403).json({ error: 'forbidden', message: 'No autorizado' });
-    }
-
     const productRef = db.collection('products').doc(req.params.id);
     const snap = await productRef.get();
     if (!snap.exists) {
@@ -178,6 +174,11 @@ router.post('/admin/products/:id/reconcile-model', verifyFirebaseToken, async (r
     }
 
     const productData = snap.data();
+    const isOwner = productData.sellerId === req.user.uid;
+    if (req.user.admin !== true && !isOwner) {
+      return res.status(403).json({ error: 'forbidden', message: 'No autorizado' });
+    }
+
     const taskId = productData.model3d?.meshyTaskId;
     if (!taskId) {
       return res.status(400).json({ error: 'missing_task_id', message: 'El producto no tiene meshyTaskId' });
