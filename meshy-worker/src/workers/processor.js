@@ -46,6 +46,15 @@ const worker = new Worker('3d-generation', async (job) => {
     else if (err instanceof MeshyRateLimitError) errorCode = 'rate_limited';
     else if (err instanceof MeshyValidationError) errorCode = 'invalid_images';
 
+    logger.error({
+      productId,
+      sellerId,
+      jobId: job.id,
+      errorCode,
+      err: err.message,
+      stack: err.stack,
+    }, 'Error procesando job de generacion 3D');
+
     await productRef.update({
       'model3d.status': 'failed',
       'model3d.error': errorCode,
