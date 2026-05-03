@@ -22,7 +22,10 @@ const createSchema = z.object({
 });
 
 router.post('/products/create', verifyFirebaseToken, upload.array('photos', 4), async (req, res, next) => {
+  const t0 = Date.now();
   try {
+    logger.info({ uid: req.user.uid, files: req.files?.length }, '[create] step 1: auth+multer ok');
+
     const parsed = createSchema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json({ error: 'validation', details: parsed.error.flatten() });
@@ -38,16 +41,25 @@ router.post('/products/create', verifyFirebaseToken, upload.array('photos', 4), 
 
     const productRef = db.collection('products').doc();
     const productId = productRef.id;
+    logger.info({ productId, photoCount: photos.length, totalBytes: photos.reduce((s, p) => s + p.size, 0) }, '[create] step 2: starting cloudinary uploads');
 
+    const tCloud = Date.now();
     const photoUrls = await Promise.all(
-      photos.map((photo, i) => uploadPhoto({
-        buffer: photo.buffer,
-        contentType: photo.mimetype,
-        productId,
-        index: i,
-      }))
+      photos.map(async (photo, i) => {
+        const ti = Date.now();
+        const url = await uploadPhoto({
+          buffer: photo.buffer,
+          contentType: photo.mimetype,
+          productId,
+          index: i,
+        });
+        logger.info({ productId, index: i, ms: Date.now() - ti, bytes: photo.size }, '[create] cloudinary photo done');
+        return url;
+      })
     );
+    logger.info({ productId, ms: Date.now() - tCloud }, '[create] step 3: all cloudinary uploads done');
 
+    const tFs = Date.now();
     await productRef.set({
       ...parsed.data,
       sellerId: req.user.uid,
@@ -61,14 +73,15 @@ router.post('/products/create', verifyFirebaseToken, upload.array('photos', 4), 
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     });
+    logger.info({ productId, ms: Date.now() - tFs }, '[create] step 4: firestore write done');
 
+    const tQ = Date.now();
     const job = await modelQueue.add('generate', {
       productId,
       sellerId: req.user.uid,
       imageUrls: photoUrls.slice(0, 4),
     }, { jobId: productId });
-
-    logger.info({ productId, jobId: job.id }, 'Producto creado y job encolado');
+    logger.info({ productId, jobId: job.id, ms: Date.now() - tQ, totalMs: Date.now() - t0 }, '[create] step 5: job encolado, respondiendo');
 
     return res.status(202).json({
       productId,
