@@ -67,7 +67,7 @@ router.post('/products/create', verifyFirebaseToken, upload.array('photos', 4), 
       sellerId: req.user.uid,
       sellerName: req.user.name ?? req.user.email ?? 'Vendedor',
       photos: photoUrls,
-      status: 'draft',
+      status: 'published',
       model3d: {
         status: 'queued',
         queuedAt: FieldValue.serverTimestamp(),
@@ -89,6 +89,7 @@ router.post('/products/create', verifyFirebaseToken, upload.array('photos', 4), 
       productId,
       jobId: job.id,
       status: 'queued',
+      productStatus: 'published',
       estimatedMinutes: 3,
     });
   } catch (err) {
@@ -104,6 +105,7 @@ router.get('/products/:id/status', async (req, res, next) => {
     const data = snap.data();
     return res.json({
       productId: req.params.id,
+      productStatus: data.status ?? 'unknown',
       status: data.model3d?.status ?? 'unknown',
       progress: data.model3d?.progress ?? 0,
       glbUrl: data.model3d?.glbUrl,
