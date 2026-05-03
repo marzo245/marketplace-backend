@@ -14,6 +14,10 @@ const schema = z.object({
   FIREBASE_SERVICE_ACCOUNT_JSON: z.string().optional(),
   GOOGLE_APPLICATION_CREDENTIALS: z.string().optional(),
 
+  SUPABASE_URL: z.string().url().optional(),
+  SUPABASE_SECRET_KEY: z.string().min(20).optional(),
+  SUPABASE_STORAGE_BUCKET: z.string().min(1).optional(),
+
   CLOUDINARY_CLOUD_NAME: z.string().min(1),
   CLOUDINARY_API_KEY: z.string().min(1),
   CLOUDINARY_API_SECRET: z.string().min(1),

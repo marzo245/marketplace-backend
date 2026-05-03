@@ -28,6 +28,44 @@ function getModelContentType(format) {
   return 'application/octet-stream';
 }
 
+function hasSupabaseStorage() {
+  return Boolean(
+    config.SUPABASE_URL &&
+    config.SUPABASE_SECRET_KEY &&
+    config.SUPABASE_STORAGE_BUCKET
+  );
+}
+
+async function uploadModelToSupabase({ buffer, productId, format }) {
+  const objectPath = `marketplace/products/${productId}/model.${format}`;
+  const encodedPath = objectPath
+    .split('/')
+    .map(encodeURIComponent)
+    .join('/');
+  const baseUrl = config.SUPABASE_URL.replace(/\/$/, '');
+  const uploadUrl = `${baseUrl}/storage/v1/object/${config.SUPABASE_STORAGE_BUCKET}/${encodedPath}`;
+  const publicUrl = `${baseUrl}/storage/v1/object/public/${config.SUPABASE_STORAGE_BUCKET}/${encodedPath}`;
+
+  await axios.post(uploadUrl, buffer, {
+    headers: {
+      Authorization: `Bearer ${config.SUPABASE_SECRET_KEY}`,
+      apikey: config.SUPABASE_SECRET_KEY,
+      'Content-Type': getModelContentType(format),
+      'x-upsert': 'true',
+    },
+    maxBodyLength: Infinity,
+    maxContentLength: Infinity,
+    timeout: 60000,
+  });
+
+  logger.info(
+    { productId, format, bytes: buffer.length, objectPath, bucket: config.SUPABASE_STORAGE_BUCKET },
+    'Model stored in Supabase Storage'
+  );
+
+  return publicUrl;
+}
+
 export async function uploadPhoto({ buffer, productId, index }) {
   const result = await uploadBufferToCloudinary(buffer, {
     folder: `marketplace/products/${productId}/photos`,
@@ -47,6 +85,11 @@ export async function downloadAndStoreModel({ url, productId, format }) {
   });
 
   const buffer = Buffer.from(res.data);
+
+  if (hasSupabaseStorage()) {
+    return uploadModelToSupabase({ buffer, productId, format });
+  }
+
   const objectPath = `marketplace/products/${productId}/model.${format}`;
   const downloadToken = crypto.randomUUID();
   const file = bucket.file(objectPath);
