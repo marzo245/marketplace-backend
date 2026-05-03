@@ -6,6 +6,7 @@ import { uploadPhoto } from '../services/storage.js';
 import { modelQueue } from '../services/queue.js';
 import { getUsage } from '../services/credits.js';
 import { getTask } from '../services/meshy.js';
+import { finalizeSuccessfulModel, markModelFailed } from '../services/model-sync.js';
 import { logger } from '../utils/logger.js';
 import { verifyFirebaseToken } from '../middleware/auth.js';
 
@@ -108,22 +109,25 @@ router.get('/products/:id/status', async (req, res, next) => {
       glbUrl: data.model3d?.glbUrl,
       usdzUrl: data.model3d?.usdzUrl,
       error: data.model3d?.error,
+      errorDetail: data.model3d?.errorDetail,
     });
   } catch (err) {
     next(err);
   }
 });
 
-router.get('/debug/meshy/:productId', async (req, res, next) => {
+router.get('/debug/meshy/:productId', async (req, res) => {
   try {
     const snap = await db.collection('products').doc(req.params.productId).get();
     if (!snap.exists) return res.status(404).json({ error: 'not_found' });
     const data = snap.data();
     const taskId = data.model3d?.meshyTaskId;
-    if (!taskId) return res.json({ productId: req.params.productId, error: 'no_meshy_task_id', model3d: data.model3d });
+    if (!taskId) {
+      return res.json({ productId: req.params.productId, error: 'no_meshy_task_id', model3d: data.model3d });
+    }
 
     const task = await getTask(taskId, 'multi-image-to-3d');
-    res.json({
+    return res.json({
       productId: req.params.productId,
       taskId,
       firestoreStatus: data.model3d?.status,
@@ -137,7 +141,12 @@ router.get('/debug/meshy/:productId', async (req, res, next) => {
       meshyFinishedAt: task.finished_at,
     });
   } catch (err) {
-    res.status(500).json({ error: 'debug_failed', message: err.message, status: err.response?.status, data: err.response?.data });
+    return res.status(500).json({
+      error: 'debug_failed',
+      message: err.message,
+      status: err.response?.status,
+      data: err.response?.data,
+    });
   }
 });
 
@@ -149,6 +158,79 @@ router.get('/admin/usage', verifyFirebaseToken, async (req, res, next) => {
 
     const usage = await getUsage();
     res.json(usage);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/admin/products/:id/reconcile-model', verifyFirebaseToken, async (req, res, next) => {
+  try {
+    if (req.user.admin !== true) {
+      return res.status(403).json({ error: 'forbidden', message: 'No autorizado' });
+    }
+
+    const productRef = db.collection('products').doc(req.params.id);
+    const snap = await productRef.get();
+    if (!snap.exists) {
+      return res.status(404).json({ error: 'not_found', message: 'Producto no encontrado' });
+    }
+
+    const productData = snap.data();
+    const taskId = productData.model3d?.meshyTaskId;
+    if (!taskId) {
+      return res.status(400).json({ error: 'missing_task_id', message: 'El producto no tiene meshyTaskId' });
+    }
+
+    const task = await getTask(taskId, 'multi-image-to-3d');
+    const taskStatus = task.status ?? 'unknown';
+
+    if (taskStatus === 'SUCCEEDED') {
+      await finalizeSuccessfulModel({
+        productRef,
+        productId: snap.id,
+        productData,
+        glbUrl: task.model_urls?.glb,
+        usdzUrl: task.model_urls?.usdz,
+        thumbnailUrl: task.thumbnail_url,
+      });
+
+      return res.json({
+        ok: true,
+        productId: snap.id,
+        taskId,
+        firestoreStatus: 'ready',
+        meshyStatus: taskStatus,
+      });
+    }
+
+    if (taskStatus === 'FAILED') {
+      const error = task.task_error?.message ?? 'meshy_generation_failed';
+      await markModelFailed({ productRef, error });
+
+      return res.json({
+        ok: true,
+        productId: snap.id,
+        taskId,
+        firestoreStatus: 'failed',
+        meshyStatus: taskStatus,
+        error,
+      });
+    }
+
+    await productRef.update({
+      'model3d.status': 'processing',
+      'model3d.progress': task.progress ?? productData.model3d?.progress ?? 0,
+      'model3d.lastMeshyCheckAt': FieldValue.serverTimestamp(),
+    });
+
+    return res.json({
+      ok: true,
+      productId: snap.id,
+      taskId,
+      firestoreStatus: 'processing',
+      meshyStatus: taskStatus,
+      meshyProgress: task.progress ?? 0,
+    });
   } catch (err) {
     next(err);
   }

@@ -1,8 +1,7 @@
 import { Router } from 'express';
 import crypto from 'node:crypto';
 import { db, FieldValue } from '../services/firebase.js';
-import { downloadAndStoreModel } from '../services/storage.js';
-import { notifyModelReady } from '../services/notifications.js';
+import { finalizeSuccessfulModel, markModelFailed } from '../services/model-sync.js';
 import { config } from '../config/index.js';
 import { logger } from '../utils/logger.js';
 
@@ -71,45 +70,18 @@ router.post('/meshy', async (req, res, next) => {
     const productData = query.docs[0].data();
 
     if (status === 'SUCCEEDED') {
-      const glbUrl = event.model_urls?.glb;
-      const usdzUrl = event.model_urls?.usdz;
-      const thumbnailUrl = event.thumbnail_url;
-
-      const stored = {};
-      if (glbUrl) stored.glbUrl = await downloadAndStoreModel({ url: glbUrl, productId, format: 'glb' });
-      if (usdzUrl) stored.usdzUrl = await downloadAndStoreModel({ url: usdzUrl, productId, format: 'usdz' });
-
-      await productRef.update({
-        'model3d.status': 'ready',
-        'model3d.glbUrl': stored.glbUrl ?? null,
-        'model3d.usdzUrl': stored.usdzUrl ?? null,
-        'model3d.thumbnailUrl': thumbnailUrl ?? null,
-        'model3d.completedAt': FieldValue.serverTimestamp(),
-        'status': 'published',
+      await finalizeSuccessfulModel({
+        productRef,
+        productId,
+        productData,
+        glbUrl: event.model_urls?.glb,
+        usdzUrl: event.model_urls?.usdz,
+        thumbnailUrl: event.thumbnail_url,
       });
-
-      if (!productData.model3d?.notifiedAt) {
-        try {
-          await notifyModelReady({
-            sellerId: productData.sellerId,
-            productId,
-            title: productData.title ?? 'Tu producto',
-          });
-
-          await productRef.update({
-            'model3d.notifiedAt': FieldValue.serverTimestamp(),
-          });
-        } catch (notificationError) {
-          logger.error({ productId, err: notificationError.message }, 'No se pudo enviar la notificación FCM');
-        }
-      }
-
-      logger.info({ productId }, 'Modelo 3D listo y publicado');
     } else if (status === 'FAILED') {
-      await productRef.update({
-        'model3d.status': 'failed',
-        'model3d.error': event.task_error?.message ?? 'meshy_generation_failed',
-        'model3d.failedAt': FieldValue.serverTimestamp(),
+      await markModelFailed({
+        productRef,
+        error: event.task_error?.message ?? 'meshy_generation_failed',
       });
     } else if (status === 'IN_PROGRESS') {
       await productRef.update({
