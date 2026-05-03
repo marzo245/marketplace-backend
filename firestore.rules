@@ -28,6 +28,24 @@ service cloud.firestore {
       allow read, write: if signedIn() && request.auth.uid == uid;
     }
 
+    match /users/{uid}/{document=**} {
+      allow read, write: if signedIn() && request.auth.uid == uid;
+    }
+
+    match /product_inquiries/{inquiryId} {
+      allow create: if signedIn() && request.resource.data.buyerId == request.auth.uid;
+      allow read: if signedIn() &&
+        (resource.data.buyerId == request.auth.uid || resource.data.sellerId == request.auth.uid);
+      allow update, delete: if false;
+    }
+
+    match /purchase_intents/{intentId} {
+      allow create: if signedIn() && request.resource.data.buyerId == request.auth.uid;
+      allow read: if signedIn() &&
+        (resource.data.buyerId == request.auth.uid || resource.data.sellerId == request.auth.uid);
+      allow update, delete: if false;
+    }
+
     match /chats/{chatId}/{document=**} {
       allow read, write: if false;
     }
