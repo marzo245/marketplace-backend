@@ -24,13 +24,29 @@ function verifySignature(rawBody, signatureHeader) {
   }
 }
 
+function verifyWebhookRequest(req) {
+  const rawBody = req.rawBody;
+  const signature = req.header('x-meshy-signature');
+  const secretKey = req.header('x-meshy-api-webhook-secret-key');
+
+  if (signature) {
+    return verifySignature(rawBody, signature);
+  }
+
+  if (secretKey) {
+    return secretKey === config.MESHY_WEBHOOK_SECRET;
+  }
+
+  return false;
+}
+
 router.post('/meshy', async (req, res, next) => {
   try {
-    const rawBody = req.rawBody;
-    const signature = req.header('x-meshy-signature');
-
-    if (!verifySignature(rawBody, signature)) {
-      logger.warn('Webhook de Meshy con firma invalida');
+    if (!verifyWebhookRequest(req)) {
+      logger.warn({
+        hasSignature: Boolean(req.header('x-meshy-signature')),
+        hasSecretKeyHeader: Boolean(req.header('x-meshy-api-webhook-secret-key')),
+      }, 'Webhook de Meshy con firma invalida');
       return res.status(401).json({ error: 'invalid_signature' });
     }
 
