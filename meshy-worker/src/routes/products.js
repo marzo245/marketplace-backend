@@ -5,6 +5,7 @@ import { db, FieldValue } from '../services/firebase.js';
 import { uploadPhoto } from '../services/storage.js';
 import { modelQueue } from '../services/queue.js';
 import { getUsage } from '../services/credits.js';
+import { getTask } from '../services/meshy.js';
 import { logger } from '../utils/logger.js';
 import { verifyFirebaseToken } from '../middleware/auth.js';
 
@@ -110,6 +111,33 @@ router.get('/products/:id/status', async (req, res, next) => {
     });
   } catch (err) {
     next(err);
+  }
+});
+
+router.get('/debug/meshy/:productId', async (req, res, next) => {
+  try {
+    const snap = await db.collection('products').doc(req.params.productId).get();
+    if (!snap.exists) return res.status(404).json({ error: 'not_found' });
+    const data = snap.data();
+    const taskId = data.model3d?.meshyTaskId;
+    if (!taskId) return res.json({ productId: req.params.productId, error: 'no_meshy_task_id', model3d: data.model3d });
+
+    const task = await getTask(taskId, 'multi-image-to-3d');
+    res.json({
+      productId: req.params.productId,
+      taskId,
+      firestoreStatus: data.model3d?.status,
+      firestoreError: data.model3d?.error,
+      firestoreErrorDetail: data.model3d?.errorDetail,
+      meshyStatus: task.status,
+      meshyProgress: task.progress,
+      meshyError: task.task_error,
+      meshyModelUrls: task.model_urls,
+      meshyCreatedAt: task.created_at,
+      meshyFinishedAt: task.finished_at,
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'debug_failed', message: err.message, status: err.response?.status, data: err.response?.data });
   }
 });
 
