@@ -23,6 +23,101 @@ const createSchema = z.object({
   category: z.string(),
 });
 
+function toStatusResponse(productId, data) {
+  return {
+    productId,
+    productStatus: data.status ?? 'unknown',
+    status: data.model3d?.status ?? 'unknown',
+    progress: data.model3d?.progress ?? 0,
+    glbUrl: data.model3d?.glbUrl,
+    usdzUrl: data.model3d?.usdzUrl,
+    error: data.model3d?.error,
+    errorDetail: data.model3d?.errorDetail,
+  };
+}
+
+function shouldRefreshFromMeshy(model3d) {
+  const status = model3d?.status;
+  if (!model3d?.meshyTaskId) return false;
+  if (status !== 'queued' && status !== 'processing') return false;
+
+  const lastCheck = model3d?.lastMeshyCheckAt?.toMillis?.();
+  if (!lastCheck) return true;
+
+  return (Date.now() - lastCheck) >= 5000;
+}
+
+async function refreshProductModelStatus(productRef, productId, data) {
+  const model3d = data.model3d ?? {};
+  if (!shouldRefreshFromMeshy(model3d)) return data;
+
+  try {
+    const task = await getTask(model3d.meshyTaskId, 'multi-image-to-3d');
+    const taskStatus = task.status ?? 'unknown';
+
+    if (taskStatus === 'SUCCEEDED') {
+      await finalizeSuccessfulModel({
+        productRef,
+        productId,
+        productData: data,
+        glbUrl: task.model_urls?.glb,
+        usdzUrl: task.model_urls?.usdz,
+        thumbnailUrl: task.thumbnail_url,
+      });
+
+      return {
+        ...data,
+        status: 'published',
+        model3d: {
+          ...model3d,
+          status: 'ready',
+          progress: 100,
+          glbUrl: task.model_urls?.glb ?? model3d.glbUrl,
+          usdzUrl: task.model_urls?.usdz ?? model3d.usdzUrl,
+          thumbnailUrl: task.thumbnail_url ?? model3d.thumbnailUrl,
+        },
+      };
+    }
+
+    if (taskStatus === 'FAILED') {
+      const error = task.task_error?.message ?? 'meshy_generation_failed';
+      await markModelFailed({ productRef, error });
+
+      return {
+        ...data,
+        model3d: {
+          ...model3d,
+          status: 'failed',
+          error,
+          errorDetail: error,
+        },
+      };
+    }
+
+    const nextProgress = task.progress ?? model3d.progress ?? 0;
+    await productRef.update({
+      'model3d.status': 'processing',
+      'model3d.progress': nextProgress,
+      'model3d.lastMeshyCheckAt': FieldValue.serverTimestamp(),
+    });
+
+    return {
+      ...data,
+      model3d: {
+        ...model3d,
+        status: 'processing',
+        progress: nextProgress,
+      },
+    };
+  } catch (err) {
+    logger.warn(
+      { productId, taskId: model3d.meshyTaskId, err: err.message, status: err.response?.status },
+      'No se pudo refrescar estado desde Meshy durante /status'
+    );
+    return data;
+  }
+}
+
 router.post('/products/create', verifyFirebaseToken, upload.array('photos', 4), async (req, res, next) => {
   const t0 = Date.now();
   try {
@@ -99,20 +194,12 @@ router.post('/products/create', verifyFirebaseToken, upload.array('photos', 4), 
 
 router.get('/products/:id/status', async (req, res, next) => {
   try {
-    const snap = await db.collection('products').doc(req.params.id).get();
+    const productRef = db.collection('products').doc(req.params.id);
+    const snap = await productRef.get();
     if (!snap.exists) return res.status(404).json({ error: 'not_found' });
 
-    const data = snap.data();
-    return res.json({
-      productId: req.params.id,
-      productStatus: data.status ?? 'unknown',
-      status: data.model3d?.status ?? 'unknown',
-      progress: data.model3d?.progress ?? 0,
-      glbUrl: data.model3d?.glbUrl,
-      usdzUrl: data.model3d?.usdzUrl,
-      error: data.model3d?.error,
-      errorDetail: data.model3d?.errorDetail,
-    });
+    const data = await refreshProductModelStatus(productRef, req.params.id, snap.data());
+    return res.json(toStatusResponse(req.params.id, data));
   } catch (err) {
     next(err);
   }
